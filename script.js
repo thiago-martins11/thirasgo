@@ -151,14 +151,13 @@ function setDifficulty(diffKey) {
 let canvas, ctx, wrapper;
 let scoreVal, creditsVal, healthFill, ultFill, startScreen, gameOverScreen, pauseScreen, shopScreen, leaderboardScreen;
 let finalScoreText, earnedCreditsText, powerupNotice, bossHealthContainer, bossHealthFill, bossTitle, comboBadge;
-let slotTriple, slotPenta, slotShield, countTriple, countPenta, countShield, soundToggleBtn;
+let soundToggleBtn;
 
 let gameActive = false, isPaused = false;
 let score = 0, earnedCredits = 0, combo = 1, comboTimer = 0;
 let screenShake = 0, frameCount = 0;
 let ultimateEnergy = 0;
 
-const inventory = { TRIPLE: 0, PENTA: 0, SHIELD: 0 };
 const BOSS_INTERVAL = 20000;
 let nextBossScore = BOSS_INTERVAL, bossLevel = 1;
 
@@ -176,31 +175,6 @@ function resize() {
     if (canvas && wrapper) {
         canvas.width = wrapper.clientWidth;
         canvas.height = wrapper.clientHeight;
-    }
-}
-
-function updateInventoryUI() {
-    if (countTriple) countTriple.innerText = `x${inventory.TRIPLE}`;
-    if (countPenta) countPenta.innerText = `x${inventory.PENTA}`;
-    if (countShield) countShield.innerText = `x${inventory.SHIELD}`;
-    if (slotTriple) slotTriple.classList.toggle('has-item', inventory.TRIPLE > 0);
-    if (slotPenta) slotPenta.classList.toggle('has-item', inventory.PENTA > 0);
-    if (slotShield) slotShield.classList.toggle('has-item', inventory.SHIELD > 0);
-}
-
-function usePowerup(type) {
-    if (!gameActive || isPaused || !player) return;
-    const durationBonus = metaData.upgrades.duration * 60;
-
-    if (type === 'TRIPLE' && inventory.TRIPLE > 0) {
-        inventory.TRIPLE--; player.powerup = 'TRIPLE'; player.powerupTimer = 400 + durationBonus;
-        triggerPowerupNotice('TIRO TRIPLO ATIVADO!'); audio.playPowerup(); updateInventoryUI();
-    } else if (type === 'PENTA' && inventory.PENTA > 0) {
-        inventory.PENTA--; player.powerup = 'PENTA'; player.powerupTimer = 350 + durationBonus;
-        triggerPowerupNotice('TIRO 5X QUÍNTUPLO ATIVADO!'); audio.playPowerup(); updateInventoryUI();
-    } else if (type === 'SHIELD' && inventory.SHIELD > 0) {
-        inventory.SHIELD--; player.powerup = 'SHIELD'; player.powerupTimer = 500 + durationBonus;
-        triggerPowerupNotice('ESCUDO ATIVADO!'); audio.playPowerup(); updateInventoryUI();
     }
 }
 
@@ -587,16 +561,30 @@ function checkCollisions() {
         });
     }
 
+    // ATIVAÇÃO IMEDIATA DOS POWER-UPS
     if (player) {
         powerups.forEach((pw, pIdx) => {
             if (Math.hypot(player.x - pw.x, player.y - pw.y) < player.width / 2 + pw.size) {
+                audio.playPowerup();
+                const durationBonus = metaData.upgrades.duration * 60;
+
                 if (pw.type === 'HEAL') {
-                    audio.playPowerup(); player.health = Math.min(player.maxHealth, player.health + 35);
+                    player.health = Math.min(player.maxHealth, player.health + 35);
                     triggerPowerupNotice('VIDA RECUPERADA (+35%)');
-                } else {
-                    audio.playPowerup(); inventory[pw.type]++; updateInventoryUI();
-                    triggerPowerupNotice(`+1 ITEM: ${pw.type}`);
+                } else if (pw.type === 'TRIPLE') {
+                    player.powerup = 'TRIPLE';
+                    player.powerupTimer = 400 + durationBonus;
+                    triggerPowerupNotice('TIRO TRIPLO ATIVADO!');
+                } else if (pw.type === 'PENTA') {
+                    player.powerup = 'PENTA';
+                    player.powerupTimer = 350 + durationBonus;
+                    triggerPowerupNotice('TIRO 5X QUÍNTUPLO ATIVADO!');
+                } else if (pw.type === 'SHIELD') {
+                    player.powerup = 'SHIELD';
+                    player.powerupTimer = 500 + durationBonus;
+                    triggerPowerupNotice('ESCUDO ATIVADO!');
                 }
+
                 powerups.splice(pIdx, 1);
             }
         });
@@ -657,7 +645,6 @@ function startGame() {
     audio.init(); score = 0; earnedCredits = 0; combo = 1; bossLevel = 1;
     nextBossScore = BOSS_INTERVAL; currentBoss = null; isPaused = false; ultimateEnergy = 0;
 
-    inventory.TRIPLE = 0; inventory.PENTA = 0; inventory.SHIELD = 0; updateInventoryUI();
     bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = [];
     
     player = new Player();
@@ -747,13 +734,6 @@ document.addEventListener('DOMContentLoaded', () => {
     bossHealthFill = document.getElementById('bossHealthFill');
     bossTitle = document.getElementById('bossTitle');
 
-    slotTriple = document.getElementById('slotTriple');
-    slotPenta = document.getElementById('slotPenta');
-    slotShield = document.getElementById('slotShield');
-    countTriple = document.getElementById('countTriple');
-    countPenta = document.getElementById('countPenta');
-    countShield = document.getElementById('countShield');
-
     soundToggleBtn = document.getElementById('soundToggleBtn');
 
     setDifficulty(currentDifficulty);
@@ -774,16 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.code === 'KeyP') togglePause();
         if (e.code === 'Space') triggerUltimate();
         if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') if (player) player.dash();
-        if (e.code === 'Digit1') usePowerup('TRIPLE');
-        if (e.code === 'Digit2') usePowerup('PENTA');
-        if (e.code === 'Digit3') usePowerup('SHIELD');
     });
 
     window.addEventListener('keyup', e => keys[e.code] = false);
-
-    if (slotTriple) slotTriple.addEventListener('click', () => usePowerup('TRIPLE'));
-    if (slotPenta) slotPenta.addEventListener('click', () => usePowerup('PENTA'));
-    if (slotShield) slotShield.addEventListener('click', () => usePowerup('SHIELD'));
 
     const hudPauseBtn = document.getElementById('hudPauseBtn');
     if (hudPauseBtn) hudPauseBtn.addEventListener('click', togglePause);
