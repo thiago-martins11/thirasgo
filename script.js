@@ -111,7 +111,7 @@ class SoundSystem {
 const audio = new SoundSystem();
 
 /* ==========================================================================
-   2. CONFIGURAÇÃO DE DIFICULDADE E PERSISTÊNCIA DE DADOS
+   2. CONFIGURAÇÃO DE DIFICULDADE E ADAPTAÇÃO DINÂMICA
    ========================================================================== */
 const difficultySettings = {
     EASY: { enemySpeed: 0.65, spawnRate: 1.4, bossHp: 0.7, damageMult: 0.5 },
@@ -121,6 +121,11 @@ const difficultySettings = {
 };
 
 let currentDifficulty = localStorage.getItem('cyber_difficulty') || 'EASY';
+
+// Sistema de Adaptação Dinâmica
+let nextAdaptiveMilestone = 3000;
+let adaptiveLevel = 0;
+const ADAPTIVE_STEP = 3000;
 
 const metaData = {
     credits: parseInt(localStorage.getItem('cyber_credits') || '0'),
@@ -145,11 +150,40 @@ function setDifficulty(diffKey) {
     }
 }
 
+const baseCosts = { health: 100, speed: 100, duration: 150 };
+
+function getUpgradeCost(type) {
+    const level = metaData.upgrades[type];
+    return Math.floor(baseCosts[type] * Math.pow(1.5, level));
+}
+
+function checkAdaptiveDifficulty() {
+    if (score >= nextAdaptiveMilestone) {
+        adaptiveLevel++;
+        nextAdaptiveMilestone += ADAPTIVE_STEP;
+
+        triggerAdaptiveNotice(`DIFICULDADE ADAPTADA: NÍVEL +${adaptiveLevel}`);
+        audio.playPowerup();
+        screenShake = 15;
+    }
+}
+
+function triggerAdaptiveNotice(text) {
+    const adaptiveNotice = document.getElementById('adaptiveNotice');
+    if (adaptiveNotice) {
+        adaptiveNotice.innerText = text;
+        adaptiveNotice.classList.remove('hidden');
+        setTimeout(() => {
+            adaptiveNotice.classList.add('hidden');
+        }, 3000);
+    }
+}
+
 /* ==========================================================================
    3. ENGINE PRINCIPAL DO JOGO
    ========================================================================== */
 let canvas, ctx, wrapper;
-let scoreVal, creditsVal, healthFill, ultFill, startScreen, gameOverScreen, pauseScreen, shopScreen, leaderboardScreen;
+let scoreVal, creditsVal, healthFill, ultFill, ultPercentVal, startScreen, gameOverScreen, pauseScreen, shopScreen, leaderboardScreen;
 let finalScoreText, earnedCreditsText, powerupNotice, bossHealthContainer, bossHealthFill, bossTitle, comboBadge;
 let soundToggleBtn;
 
@@ -180,14 +214,15 @@ function resize() {
 
 function triggerUltimate() {
     if (!gameActive || isPaused || ultimateEnergy < 100) return;
+    
     ultimateEnergy = 0;
     audio.playUlt();
     screenShake = 25;
 
     enemyBullets = [];
+
     enemies.forEach(e => {
         createExplosion(e.x, e.y, e.color, 25);
-        score += 100 * combo;
     });
     enemies = [];
 
@@ -333,22 +368,23 @@ class Enemy {
         this.y = type === 'CROSS' ? Math.random() * (canvas.height * 0.4) + 50 : -40;
 
         const diff = difficultySettings[currentDifficulty];
-        const mult = (1 + (bossLevel - 1) * 0.15) * diff.enemySpeed;
+        const adaptiveSpeedBoost = 1 + adaptiveLevel * 0.08; 
+        const mult = (1 + (bossLevel - 1) * 0.12) * diff.enemySpeed * adaptiveSpeedBoost;
 
         if (type === 'FAST') {
-            this.width = 30; this.height = 30; this.speed = (Math.random() * 2 + 5) * mult;
+            this.width = 30; this.height = 30; this.speed = (Math.random() * 2 + 4.5) * mult;
             this.hp = 1; this.color = '#ff0055';
         } else if (type === 'KAMIKAZE') {
-            this.width = 25; this.height = 25; this.speed = 5.5 * mult;
+            this.width = 25; this.height = 25; this.speed = 4.8 * mult;
             this.hp = 1; this.color = '#ff007f';
         } else if (type === 'SHIELDED') {
-            this.width = 45; this.height = 40; this.speed = 1.8 * mult;
-            this.hp = 5; this.color = '#00ff66';
+            this.width = 45; this.height = 40; this.speed = 1.6 * mult;
+            this.hp = 5 + adaptiveLevel; this.color = '#00ff66';
         } else if (type === 'CROSS') {
-            this.width = 35; this.height = 30; this.speed = 3.5 * mult;
+            this.width = 35; this.height = 30; this.speed = 3.2 * mult;
             this.hp = 2; this.color = '#aa00ff';
         } else {
-            this.width = 44; this.height = 40; this.speed = (Math.random() * 1.5 + 2) * mult;
+            this.width = 44; this.height = 40; this.speed = (Math.random() * 1.2 + 2) * mult;
             this.hp = 3; this.color = '#ffaa00';
         }
     }
@@ -383,26 +419,83 @@ class Boss {
         this.x = canvas.width / 2; this.y = -80; this.targetY = 100;
 
         const diff = difficultySettings[currentDifficulty];
-        this.maxHp = Math.floor((100 + level * 75) * diff.bossHp); 
+        const adaptiveHpBonus = 1 + adaptiveLevel * 0.12;
+        this.maxHp = Math.floor((100 + level * 75) * diff.bossHp * adaptiveHpBonus); 
         this.hp = this.maxHp;
-        this.speedX = Math.min(7, (3 + level * 0.8) * diff.enemySpeed);
-        this.attackRate = Math.max(12, Math.floor((40 - level * 4) * diff.spawnRate)); 
+        this.speedX = Math.min(7, (3 + level * 0.7) * diff.enemySpeed * (1 + adaptiveLevel * 0.04));
+        
+        // Intervalo de tiro reduz com o nível e dificuldade
+        this.attackRate = Math.max(15, Math.floor((45 - level * 4) * diff.spawnRate * Math.max(0.65, 1 - adaptiveLevel * 0.05))); 
         this.attackTimer = 0;
+        this.patternStep = 0;
     }
 
     update() {
         if (this.y < this.targetY) { this.y += 2; return; }
         this.x += this.speedX;
         if (this.x - this.width / 2 < 10 || this.x + this.width / 2 > canvas.width - 10) this.speedX *= -1;
+        
         this.attackTimer++;
-        if (this.attackTimer % this.attackRate === 0) this.attack();
+        if (this.attackTimer % this.attackRate === 0) {
+            this.attack();
+            this.patternStep++;
+        }
     }
 
     attack() {
         audio.playLaser(400 - Math.min(200, this.level * 20));
-        enemyBullets.push(new Bullet(this.x, this.y + 30, 0, 6, false, '#ff0055'));
-        enemyBullets.push(new Bullet(this.x - 20, this.y + 20, -2.5, 5.5, false, '#ff0055'));
-        enemyBullets.push(new Bullet(this.x + 20, this.y + 20, 2.5, 5.5, false, '#ff0055'));
+
+        // PADRÕES DE TIRO DIFERENTES POR NÍVEL DE CHEFE
+        if (this.level === 1) {
+            // CHEFE 1: Leque Tradicional (3 Direções)
+            enemyBullets.push(new Bullet(this.x, this.y + 30, 0, 5.5, false, '#ff0055'));
+            enemyBullets.push(new Bullet(this.x - 20, this.y + 20, -2.5, 5, false, '#ff0055'));
+            enemyBullets.push(new Bullet(this.x + 20, this.y + 20, 2.5, 5, false, '#ff0055'));
+
+        } else if (this.level === 2) {
+            // CHEFE 2: Rajadas Alternadas Lateral e Direcionadas
+            if (this.patternStep % 2 === 0) {
+                // Tiro Duplo Aberto
+                enemyBullets.push(new Bullet(this.x - 30, this.y + 20, -3.5, 5.5, false, '#ff00ff'));
+                enemyBullets.push(new Bullet(this.x + 30, this.y + 20, 3.5, 5.5, false, '#ff00ff'));
+                enemyBullets.push(new Bullet(this.x - 10, this.y + 30, 0, 6, false, '#ff00ff'));
+                enemyBullets.push(new Bullet(this.x + 10, this.y + 30, 0, 6, false, '#ff00ff'));
+            } else {
+                // Tiro Perseguidor Centralizado ao Jogador
+                let angle = 0;
+                if (player) angle = Math.atan2(player.y - this.y, player.x - this.x);
+                const spd = 6;
+                enemyBullets.push(new Bullet(this.x, this.y + 30, Math.cos(angle) * spd, Math.sin(angle) * spd, false, '#ffcc00'));
+            }
+
+        } else if (this.level === 3) {
+            // CHEFE 3: Expansão Circular (Nova / 360 Graus em Ondas)
+            const count = 8 + Math.min(4, adaptiveLevel);
+            const bulletSpeed = 4.5;
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 / count) * i + (this.patternStep * 0.2);
+                const vx = Math.cos(angle) * bulletSpeed;
+                const vy = Math.sin(angle) * bulletSpeed;
+                enemyBullets.push(new Bullet(this.x, this.y + 10, vx, vy, false, '#00ff66'));
+            }
+
+        } else {
+            // CHEFE 4+: Padrão Caótico Avançado (Anéis + Mísseis Rápidos)
+            const count = 10;
+            const bulletSpeed = 5 + Math.min(2, this.level * 0.3);
+            
+            // Anel Orbital
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 / count) * i;
+                enemyBullets.push(new Bullet(this.x, this.y, Math.cos(angle) * bulletSpeed, Math.sin(angle) * bulletSpeed, false, '#ff0055'));
+            }
+
+            // Projétil de Alta Velocidade no Jogador
+            if (player) {
+                const anglePlayer = Math.atan2(player.y - this.y, player.x - this.x);
+                enemyBullets.push(new Bullet(this.x, this.y + 20, Math.cos(anglePlayer) * (bulletSpeed + 2), Math.sin(anglePlayer) * (bulletSpeed + 2), false, '#00e5ff'));
+            }
+        }
     }
 
     draw() {
@@ -414,13 +507,20 @@ class Boss {
 }
 
 class PowerUp {
-    constructor(x, y) {
-        this.x = x; this.y = y; this.size = 22; this.speed = 2;
-        const rand = Math.random();
-        if (rand < 0.45) this.type = 'TRIPLE';
-        else if (rand < 0.70) this.type = 'SHIELD';
-        else if (rand < 0.88) this.type = 'HEAL';
-        else this.type = 'PENTA';
+    constructor(x, y, forceType = null) {
+        this.x = x !== undefined ? x : Math.random() * (canvas.width - 60) + 30;
+        this.y = y !== undefined ? y : -20;
+        this.size = 22; this.speed = 2.2;
+        
+        if (forceType) {
+            this.type = forceType;
+        } else {
+            const rand = Math.random();
+            if (rand < 0.45) this.type = 'TRIPLE';
+            else if (rand < 0.70) this.type = 'SHIELD';
+            else if (rand < 0.88) this.type = 'HEAL';
+            else this.type = 'PENTA';
+        }
     }
     update() { this.y += this.speed; }
     draw() {
@@ -428,6 +528,13 @@ class PowerUp {
         let color = this.type === 'TRIPLE' ? '#ffcc00' : this.type === 'PENTA' ? '#ff00ff' : this.type === 'HEAL' ? '#00ff66' : '#00e5ff';
         ctx.shadowBlur = 15; ctx.shadowColor = color; ctx.strokeStyle = color; ctx.lineWidth = 2;
         ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
+        
+        if (this.type === 'HEAL') {
+            ctx.fillStyle = '#00ff66';
+            ctx.fillRect(-2, -6, 4, 12);
+            ctx.fillRect(-6, -2, 12, 4);
+        }
+
         ctx.restore();
     }
 }
@@ -477,10 +584,18 @@ function createExplosion(x, y, color, count = 15) {
 }
 
 function spawnEnemies() {
-    if (currentBoss) return;
+    if (currentBoss) {
+        if (frameCount % 180 === 0) {
+            const spawnX = Math.random() * (canvas.width - 80) + 40;
+            powerups.push(new PowerUp(spawnX, -20, 'HEAL'));
+        }
+        return;
+    }
+
     const diff = difficultySettings[currentDifficulty];
-    const baseRate = Math.max(15, 45 - (bossLevel - 1) * 5);
-    const rate = Math.floor(baseRate * diff.spawnRate);
+    const baseRate = Math.max(12, 45 - (bossLevel - 1) * 5);
+    const adaptiveRateBonus = Math.max(0.5, 1 - adaptiveLevel * 0.08); 
+    const rate = Math.floor(baseRate * diff.spawnRate * adaptiveRateBonus);
 
     if (frameCount % rate === 0) {
         const types = ['BASIC', 'FAST', 'KAMIKAZE', 'SHIELDED', 'CROSS'];
@@ -521,7 +636,9 @@ function checkCollisions() {
                     if (Math.random() < 0.25) powerups.push(new PowerUp(e.x, e.y));
                     createExplosion(e.x, e.y, e.color, 20);
                     score += 100 * combo; earnedCredits += 5;
-                    ultimateEnergy = Math.min(100, ultimateEnergy + 8);
+                    
+                    ultimateEnergy = Math.min(100, ultimateEnergy + 10);
+                    
                     comboTimer = 120; combo = Math.min(5, combo + 0.2);
                     enemies.splice(eIdx, 1);
                 }
@@ -531,6 +648,9 @@ function checkCollisions() {
         if (currentBoss && Math.hypot(b.x - currentBoss.x, b.y - currentBoss.y) < currentBoss.width / 2 + b.radius) {
             currentBoss.hp--; bullets.splice(bIdx, 1);
             createExplosion(b.x, b.y, '#00e5ff', 5);
+            
+            ultimateEnergy = Math.min(100, ultimateEnergy + 3);
+            
             if (currentBoss.hp <= 0) defeatBoss();
         }
     });
@@ -561,7 +681,6 @@ function checkCollisions() {
         });
     }
 
-    // ATIVAÇÃO IMEDIATA DOS POWER-UPS
     if (player) {
         powerups.forEach((pw, pIdx) => {
             if (Math.hypot(player.x - pw.x, player.y - pw.y) < player.width / 2 + pw.size) {
@@ -596,6 +715,8 @@ function gameLoop() {
     frameCount++;
     if (comboTimer > 0) { comboTimer--; if (comboTimer === 0) combo = 1; }
 
+    checkAdaptiveDifficulty();
+
     const theme = neonThemes[(bossLevel - 1) % neonThemes.length];
     ctx.fillStyle = theme.bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -627,7 +748,9 @@ function gameLoop() {
     if (scoreVal) scoreVal.innerText = String(Math.floor(score)).padStart(4, '0');
     if (creditsVal) creditsVal.innerText = `₡ ${metaData.credits + earnedCredits} CRÉDITOS`;
     if (healthFill && player) healthFill.style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
+    
     if (ultFill) ultFill.style.width = `${ultimateEnergy}%`;
+    if (ultPercentVal) ultPercentVal.innerText = `${Math.floor(ultimateEnergy)}%`;
 
     if (comboBadge) {
         if (combo > 1) { comboBadge.innerText = `x${combo.toFixed(1)} COMBO`; comboBadge.classList.remove('hidden'); }
@@ -644,6 +767,9 @@ function gameLoop() {
 function startGame() {
     audio.init(); score = 0; earnedCredits = 0; combo = 1; bossLevel = 1;
     nextBossScore = BOSS_INTERVAL; currentBoss = null; isPaused = false; ultimateEnergy = 0;
+
+    adaptiveLevel = 0;
+    nextAdaptiveMilestone = ADAPTIVE_STEP;
 
     bullets = []; enemyBullets = []; enemies = []; particles = []; powerups = [];
     
@@ -674,12 +800,21 @@ function renderShop() {
     const shopCreditsText = document.getElementById('shopCreditsText');
     if (shopCreditsText) shopCreditsText.innerText = `SEUS CRÉDITOS: ₡ ${metaData.credits}`;
 
+    const healthCost = getUpgradeCost('health');
+    const speedCost = getUpgradeCost('speed');
+    const durationCost = getUpgradeCost('duration');
+
     document.getElementById('healthLvlText').innerText = `Nível ${metaData.upgrades.health} (+${metaData.upgrades.health * 25} HP)`;
     document.getElementById('speedLvlText').innerText = `Nível ${metaData.upgrades.speed} (+${(metaData.upgrades.speed * 0.8).toFixed(1)} Spd)`;
     document.getElementById('durationLvlText').innerText = `Nível ${metaData.upgrades.duration} (+${metaData.upgrades.duration}s)`;
+
+    document.getElementById('buyHealthBtn').innerText = `₡ ${healthCost}`;
+    document.getElementById('buySpeedBtn').innerText = `₡ ${speedCost}`;
+    document.getElementById('buyDurationBtn').innerText = `₡ ${durationCost}`;
 }
 
-function buyUpgrade(type, cost) {
+function buyUpgrade(type) {
+    const cost = getUpgradeCost(type);
     if (metaData.credits >= cost) {
         metaData.credits -= cost;
         metaData.upgrades[type]++;
@@ -718,6 +853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     creditsVal = document.getElementById('creditsVal');
     healthFill = document.getElementById('healthFill');
     ultFill = document.getElementById('ultFill');
+    ultPercentVal = document.getElementById('ultPercentVal');
     comboBadge = document.getElementById('comboBadge');
 
     startScreen = document.getElementById('startScreen');
@@ -750,13 +886,24 @@ document.addEventListener('DOMContentLoaded', () => {
     initStars();
 
     window.addEventListener('keydown', e => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            return;
+        }
+
         keys[e.code] = true;
         if (e.code === 'KeyP') togglePause();
-        if (e.code === 'Space') triggerUltimate();
+        if (e.code === 'KeyE') triggerUltimate();
         if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') if (player) player.dash();
     });
 
-    window.addEventListener('keyup', e => keys[e.code] = false);
+    window.addEventListener('keyup', e => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            return;
+        }
+        keys[e.code] = false;
+    });
 
     const hudPauseBtn = document.getElementById('hudPauseBtn');
     if (hudPauseBtn) hudPauseBtn.addEventListener('click', togglePause);
@@ -805,13 +952,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const buyHealthBtn = document.getElementById('buyHealthBtn');
-    if (buyHealthBtn) buyHealthBtn.addEventListener('click', () => buyUpgrade('health', 100));
+    if (buyHealthBtn) buyHealthBtn.addEventListener('click', () => buyUpgrade('health'));
 
     const buySpeedBtn = document.getElementById('buySpeedBtn');
-    if (buySpeedBtn) buySpeedBtn.addEventListener('click', () => buyUpgrade('speed', 100));
+    if (buySpeedBtn) buySpeedBtn.addEventListener('click', () => buyUpgrade('speed'));
 
     const buyDurationBtn = document.getElementById('buyDurationBtn');
-    if (buyDurationBtn) buyDurationBtn.addEventListener('click', () => buyUpgrade('duration', 150));
+    if (buyDurationBtn) buyDurationBtn.addEventListener('click', () => buyUpgrade('duration'));
 
     const leaderboardBtn = document.getElementById('leaderboardBtn');
     if (leaderboardBtn) {
