@@ -26,17 +26,22 @@
                     <div class="bar-bg">
                         <div id="healthFill" class="bar-fill health-fill"></div>
                     </div>
-                    <div style="font-size: 0.75rem; color: #ff00ff; margin-top: 4px;">ULTIMATE [ESPAÇO]</div>
-                    <div class="bar-bg">
+
+                    <!-- HUD Discreto do Ultimate -->
+                    <div class="ult-label-box">
+                        <span>ULTIMATE [E]</span>
+                        <span id="ultPercentVal">0%</span>
+                    </div>
+                    <div class="bar-bg ult-bar-bg">
                         <div id="ultFill" class="bar-fill ult-fill"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Botões Virtuais Mobile/Touch -->
+            <!-- Botão Virtual Mobile/Touch -->
             <div class="action-buttons-container">
                 <button id="dashBtn" class="action-btn dash-btn">DASH [SHIFT]</button>
-                <button id="ultBtn" class="action-btn ult-btn">BOMBA EMP</button>
+                <button id="ultBtn" class="action-btn ult-btn">ULTIMATE [E]</button>
             </div>
 
             <!-- Barra de Vida do Chefe -->
@@ -45,6 +50,11 @@
                 <div class="boss-bar-bg">
                     <div id="bossHealthFill" class="boss-bar-fill"></div>
                 </div>
+            </div>
+
+            <!-- Alerta Central de Dificuldade Adaptada -->
+            <div id="adaptiveNotice" class="adaptive-indicator hidden">
+                ⚠️ DIFICULDADE ADAPTADA: NÍVEL AUMENTADO! ⚠️
             </div>
 
             <div id="powerupNotice" class="powerup-indicator">TIRO TRIPLO ATIVO!</div>
@@ -56,7 +66,7 @@
             <p class="subtitle">RETRO SYNTHWAVE ARCADE</p>
 
             <div class="difficulty-container">
-                <label class="diff-label">DIFICULDADE:</label>
+                <label class="diff-label">DIFICULDADE INICIAL:</label>
                 <div class="diff-selector">
                     <button class="btn-diff active" data-diff="EASY">FÁCIL</button>
                     <button class="btn-diff" data-diff="MEDIUM">MÉDIO</button>
@@ -73,8 +83,8 @@
             <div class="instructions">
                 <strong>Controles:</strong><br>
                 Mover: <b>WASD / Setas / Arrasto</b> | Dash: <b>SHIFT</b><br>
-                Bomba Ultimate: <b>ESPAÇO</b> | Pausar: <b>Tecla P</b><br>
-                <i>Poderes ativam-se instantaneamente ao serem coletados!</i>
+                Ultimate EMP: <b>Tecla E</b> | Pausar: <b>Tecla P</b><br>
+                <i>A dificuldade adapta-se e escala com a sua pontuação!</i>
             </div>
         </div>
 
@@ -120,7 +130,7 @@
             <h1 class="title-main" style="color: #00e5ff;">JOGO PAUSADO</h1>
             
             <div class="difficulty-container" style="margin-bottom: 20px;">
-                <label class="diff-label">ALTERAR DIFICULDADE:</label>
+                <label class="diff-label">DIFICULDADE BASE:</label>
                 <div class="diff-selector">
                     <button class="btn-diff active" data-diff="EASY">FÁCIL</button>
                     <button class="btn-diff" data-diff="MEDIUM">MÉDIO</button>
